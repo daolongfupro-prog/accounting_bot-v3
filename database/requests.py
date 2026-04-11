@@ -47,7 +47,7 @@ async def deduct_sessions(user_id: int, package_type: str, amount_to_deduct: int
 
         package.used_sessions += amount_to_deduct
         
-        # Логируем действие в историю
+        # Запись в историю для отчета
         history_entry = History(user_id=user_id, action_type=package_type, amount=amount_to_deduct)
         session.add(history_entry)
         
@@ -59,6 +59,7 @@ async def deduct_sessions(user_id: int, package_type: str, amount_to_deduct: int
 
 async def get_all_data_for_export():
     async with async_session() as session:
-        # Выгружаем всё: юзеров, их пакеты и историю
-        result = await session.execute(select(User).options(selectinload(User.packages)))
+        result = await session.execute(
+            select(User).options(selectinload(User.packages))
+        )
         return result.scalars().unique().all()
