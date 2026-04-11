@@ -4,91 +4,78 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.deep_linking import create_start_link
 
-# Импортируем клавиатуру и функцию сохранения в базу
-from keyboards.admin_kb import get_edu_admin_kb
-from database.requests import create_client_with_package
+from database.requests import create_client_with_package, get_active_users_by_type, deduct_sessions
 
-# Создаем тот самый роутер, на который ругался бот
 router = Router()
 
 class AddStudentForm(StatesGroup):
     waiting_for_name = State()
     waiting_for_program = State()
 
-# Вход в меню обучения
+# Главное меню обучения
 @router.callback_query(F.data == "admin_edu")
 async def process_edu_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🎓 <b>Раздел: Обучение массажу</b>\n\n"
-        "Выберите действие для управления учениками и расписанием:",
-        reply_markup=get_edu_admin_kb(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить ученика", callback_data="edu_add_student")],
+        [InlineKeyboardButton(text="📉 Списать занятие", callback_data="edu_deduct")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_main")]
+    ])
+    await callback.message.edit_text("🎓 <b>Управление обучением</b>", reply_markup=kb, parse_mode="HTML")
 
-# --- ДОБАВЛЕНИЕ УЧЕНИКА ---
-
+# --- ДОБАВЛЕНИЕ ---
 @router.callback_query(F.data == "edu_add_student")
 async def start_adding_student(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(
-        "📝 <b>Новый ученик</b>\n\nВведите Имя и Фамилию ученика:",
-        parse_mode="HTML"
-    )
+    await callback.message.edit_text("📝 Введите Имя и Фамилию ученика:")
     await state.set_state(AddStudentForm.waiting_for_name)
-    await callback.answer()
 
 @router.message(AddStudentForm.waiting_for_name)
 async def process_student_name(message: Message, state: FSMContext):
     await state.update_data(student_name=message.text)
-    
-    # Программы: 1 мес (12), 3 мес (37), 6 мес (75)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="1 месяц (12 зан.)", callback_data="prog_12")],
-        [InlineKeyboardButton(text="3 месяца (37 зан.)", callback_data="prog_37")],
-        [InlineKeyboardButton(text="6 месяцев (75 зан.)", callback_data="prog_75")]
+        [InlineKeyboardButton(text="1 месяц (12)", callback_data="prog_12")],
+        [InlineKeyboardButton(text="3 месяца (37)", callback_data="prog_37")],
+        [InlineKeyboardButton(text="6 месяцев (75)", callback_data="prog_75")]
     ])
-    
-    await message.answer(
-        f"Ученик <b>{message.text}</b>.\nВыберите программу обучения:",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
+    await message.answer(f"Выберите программу для <b>{message.text}</b>:", reply_markup=kb, parse_mode="HTML")
     await state.set_state(AddStudentForm.waiting_for_program)
 
 @router.callback_query(AddStudentForm.waiting_for_program, F.data.startswith("prog_"))
-async def process_student_program(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    lessons_count = int(callback.data.split("_")[1])
+async def save_student(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    count = int(callback.data.split("_")[1])
     data = await state.get_data()
-    student_name = data['student_name']
-    
-    # 🔥 РЕАЛЬНОЕ СОХРАНЕНИЕ В БАЗУ ДАННЫХ
-    db_student_id = await create_client_with_package(
-        full_name=student_name,
-        package_type="education",
-        total_sessions=lessons_count
-    )
-    
-    # Генерация реальной ссылки для ученика
-    link = await create_start_link(bot, str(db_student_id), encode=True)
+    db_id = await create_client_with_package(data['student_name'], "education", count)
+    link = await create_start_link(bot, str(db_id), encode=True)
     
     await callback.message.edit_text(
-        f"✅ <b>Ученик успешно добавлен!</b>\n\n"
-        f"👤 Имя: <b>{student_name}</b>\n"
-        f"📚 Программа: <b>{lessons_count} занятий</b>\n\n"
-        f"🔗 <b>Ссылка для ученика:</b>\n{link}",
+        f"✅ Ученик добавлен!\n👤 <b>{data['student_name']}</b>\n📚 Занятий: {count}\n🔗 Ссылка:\n{link}",
         parse_mode="HTML"
     )
     await state.clear()
-    await callback.answer()
 
-# --- СТАТИСТИКА (Каркас) ---
+# --- СПИСАНИЕ ЗАНЯТИЙ УЧЕНИКАМ ---
+@router.callback_query(F.data == "edu_deduct")
+async def show_students_list(callback: CallbackQuery):
+    students = await get_active_users_by_type("education")
+    if not students:
+        await callback.answer("Учеников пока нет", show_alert=True)
+        return
 
-@router.callback_query(F.data == "edu_stats")
-async def show_edu_stats(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "📈 <b>Статистика обучения:</b>\n\n"
-        "<i>Скоро здесь появится список учеников из базы данных.</i>",
-        reply_markup=get_edu_admin_kb(),
-        parse_mode="HTML"
-    )
+    buttons = []
+    for s in students:
+        pkg = next((p for p in s.packages if p.package_type == "education" and p.status == "active"), None)
+        if pkg:
+            rem = pkg.total_sessions - pkg.used_sessions
+            buttons.append([InlineKeyboardButton(text=f"🎓 {s.full_name} ({rem})", callback_data=f"edu_dec_{s.id}")])
+    
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin_edu")])
+    await callback.message.edit_text("👇 Выберите ученика:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+@router.callback_query(F.data.startswith("edu_dec_"))
+async def process_edu_deduction(callback: CallbackQuery):
+    user_id = int(callback.data.split("_")[2])
+    res = await deduct_sessions(user_id, "education", 1) # Списываем по 1 уроку
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 К списку", callback_data="edu_deduct")]])
+    if res["status"] == "success":
+        await callback.message.edit_text(f"✅ Занятие списано! Остаток: <b>{res['remaining']}</b>", parse_mode="HTML", reply_markup=kb)
     await callback.answer()
