@@ -1,31 +1,38 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, BigInteger
-from sqlalchemy.orm import declarative_base, relationship
-from datetime import datetime
+from sqlalchemy import BigInteger, ForeignKey, String, DateTime, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from typing import List
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 class User(Base):
     __tablename__ = 'users'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    telegram_id = Column(BigInteger, unique=True, nullable=True)
-    full_name = Column(String, nullable=False)
-    role = Column(String, default="client") # 'client', 'student'
-    language = Column(String, default="ru")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=True)
+    full_name: Mapped[str] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(20), default="client")
+    language: Mapped[str] = mapped_column(String(5), default="ru")
     
-    # Связь с таблицей пакетов (один ко многим)
-    packages = relationship("Package", back_populates="user")
+    packages: Mapped[List["Package"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 class Package(Base):
     __tablename__ = 'packages'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    package_type = Column(String, nullable=False) # 'massage' или 'education'
-    total_sessions = Column(Integer, nullable=False) 
-    used_sessions = Column(Integer, default=0)
-    status = Column(String, default="active") # 'active', 'completed'
-    payment_date = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    package_type: Mapped[str] = mapped_column(String(20)) # massage / education
+    total_sessions: Mapped[int] = mapped_column()
+    used_sessions: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String(20), default="active") # active / completed
+    
+    user: Mapped["User"] = relationship(back_populates="packages")
 
-    user = relationship("User", back_populates="packages")
+class History(Base):
+    __tablename__ = 'history'
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    action_type: Mapped[str] = mapped_column(String(20)) # massage / education
+    amount: Mapped[int] = mapped_column()
+    created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
