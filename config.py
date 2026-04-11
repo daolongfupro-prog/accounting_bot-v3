@@ -6,9 +6,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Прописываем ID прямо здесь. Теперь это наш "белый список"
-ADMIN_IDS = [2103579364, 146156901]
+# Твои ID. Вернула старое название, чтобы не было ошибок импорта
+SUPERADMINS = [2103579364, 146156901]
 
-# Магия для SQLAlchemy (оставляем, чтобы база работала)
+# Исправление ссылки для Railway
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
