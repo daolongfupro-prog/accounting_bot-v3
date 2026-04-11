@@ -4,6 +4,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.deep_linking import create_start_link
 
+# 🔥 Импортируем нашу функцию для работы с БД
+from database.requests import create_client_with_package
+
 router = Router()
 
 # --- FSM (Машина состояний) для добавления клиента ---
@@ -47,14 +50,19 @@ async def process_client_package(callback: CallbackQuery, state: FSMContext, bot
     data = await state.get_data()
     client_name = data['client_name']
     
-    # TODO: Запись в БД (PostgreSQL). Получение db_user_id
-    db_user_id = 105 # Заглушка
+    # 🔥 ВЫЗЫВАЕМ РЕАЛЬНУЮ БАЗУ ДАННЫХ
+    # Бот создает клиента, выдает ему пакет и возвращает его настоящий ID из базы
+    db_user_id = await create_client_with_package(
+        full_name=client_name, 
+        package_type="massage", 
+        total_sessions=sessions_count
+    )
     
-    # Генерация зашифрованной ссылки
+    # Генерация зашифрованной ссылки с реальным ID
     link = await create_start_link(bot, str(db_user_id), encode=True)
     
     await callback.message.edit_text(
-        f"✅ <b>Карточка клиента успешно создана!</b>\n\n"
+        f"✅ <b>Карточка клиента успешно создана в базе!</b>\n\n"
         f"👤 Клиент: <b>{client_name}</b>\n"
         f"🎟 Пакет: <b>{sessions_count} сеансов</b>\n\n"
         f"🔗 <b>Ссылка для клиента:</b>\n{link}\n\n"
@@ -64,11 +72,12 @@ async def process_client_package(callback: CallbackQuery, state: FSMContext, bot
     await state.clear()
     await callback.answer()
 
-# --- СПИСАНИЕ СЕАНСОВ ---
+# --- СПИСАНИЕ СЕАНСОВ (Каркас) ---
 
 @router.callback_query(F.data == "msg_deduct")
 async def show_clients_for_deduction(callback: CallbackQuery):
-    # TODO: Получение списка активных клиентов из БД
+    # Пока оставляем заглушку для интерфейса, 
+    # чтобы её оживить, нам нужно будет написать функцию получения списка клиентов в requests.py
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 Иван Иванов (остаток: 5)", callback_data="deduct_user_105")],
         [InlineKeyboardButton(text="👤 Анна Смирнова (остаток: 2)", callback_data="deduct_user_106")],
@@ -90,5 +99,3 @@ async def confirm_deduction(callback: CallbackQuery):
     ])
     
     await callback.message.edit_text(f"Сколько сеансов списать?", reply_markup=kb)
-
-# TODO: Добавить обработчик для confirm_dec_... (само списание в БД)
