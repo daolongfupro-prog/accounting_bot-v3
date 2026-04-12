@@ -1,8 +1,9 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database import get_active_users_by_type
-from keyboards import get_edu_admin_kb
+# Точные пути до твоих файлов
+from database.requests import get_active_users_by_type
+from keyboards.admin_kb import get_edu_admin_kb
 
 router = Router()
 
